@@ -47,9 +47,11 @@ class Estimate(object):
     def est(self):
         result = {'tau(g)': np.zeros(self.n), 'se': np.zeros(self.n),
                   'se est': np.zeros(self.n), 'se thm': np.zeros(self.n), 
-                  'z': np.zeros(self.n), 'z est': np.zeros(self.n), 
-                  'z thm': np.zeros(self.n), 'n_sample': self.explore_sample_balance(),
-                  'bound_est': np.zeros(self.n), 'bound_thm': np.zeros(self.n)}
+                  'se influence': np.zeros(self.n), 'z': np.zeros(self.n), 
+                  'z est': np.zeros(self.n), 'z thm': np.zeros(self.n), 
+                  'z influence': np.zeros(self.n), 'n_sample': self.explore_sample_balance(),
+                  'bound_est': np.zeros(self.n), 'bound_thm': np.zeros(self.n),
+                  'bound_influence': np.zeros(self.n), 'bound_empirical': np.zeros(self.n)}
         for g in range(self.n):
             arr = (self.G == g)*((self.Z - self.prop_idv)*self.Y/
                                   (self.prop_neigh[:,g]*self.prop_idv*(1-self.prop_idv)))
@@ -57,15 +59,27 @@ class Estimate(object):
                             (1/self.prop_idv + 1/(1-self.prop_idv)))
             bound_thm = np.mean(self.sim.Params.sig2eps/self.prop_neigh_true[:,g] * 
                         (1/self.prop_idv_true + 1/(1-self.prop_idv_true)))
+            # compute the influence function and its variance
+            beta1 = (self.sim.Params.alpha + self.sim.Params.tau + 
+                     self.sim.Params.gamma*g + self.Xc.dot(self.sim.Params.betaXc))
+            beta0 = self.sim.Params.alpha + self.Xc.dot(self.sim.Params.betaXc)
+            influence = (self.G == g)*(self.Z*(self.Y-beta1)/self.prop_idv_true - 
+                            (1-self.Z)*(self.Y-beta0)/(1-self.prop_idv_true))/self.prop_neigh_true[:,g]
+            bound_influence = np.var(np.mean(influence.reshape((self.sim.Params.M, self.n)), axis=1)) * self.n
+            #print(np.var())
+            result['bound_influence'][g] = bound_influence
             result['bound_est'][g] = bound_est
             result['bound_thm'][g] = bound_thm
+            result['bound_empirical'][g] = np.var(arr)
             result['tau(g)'][g] = np.mean(arr)
             result['se'][g] = np.sqrt(np.var(arr)/self.sim.Params.N)
             result['se est'][g] = np.sqrt(bound_est/self.sim.Params.N)
             result['se thm'][g] = np.sqrt(bound_thm/self.sim.Params.N)
+            result['se influence'][g] = np.sqrt(bound_influence/self.sim.Params.N)
             result['z'][g] = (result['tau(g)'][g] - self.sim.Params.tau - g*self.sim.Params.gamma)/result['se'][g]
             result['z est'][g] = (result['tau(g)'][g] - self.sim.Params.tau - g*self.sim.Params.gamma)/result['se est'][g]
             result['z thm'][g] = (result['tau(g)'][g] - self.sim.Params.tau - g*self.sim.Params.gamma)/result['se thm'][g]
+            result['z influence'][g] = (result['tau(g)'][g] - self.sim.Params.tau - g*self.sim.Params.gamma)/result['se influence'][g]
         return result
     
     
@@ -92,14 +106,15 @@ class Estimate(object):
     
 
 if __name__ == '__main__':
-    N=6000
-    M=2000
-    gamma = 100
+    N=50000
+    M=5000
+    gamma = 5
     K=1
     fakeG=True 
-    normalX=True
+    normalX=False
     p = Params(N,M,K)
     p.gamma = gamma
+    p.betaXc = p.betaXc - p.betaXc
     p.normalX = normalX
     p.fakeG = fakeG
     s = Simulation(p)
